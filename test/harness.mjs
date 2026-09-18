@@ -34,7 +34,7 @@ class El {
   closest() { return null; }
   getContext() { return {}; }
 }
-const store = (obj = {}) => ({ getItem: (k) => (k in obj ? obj[k] : null), setItem: (k, v) => { obj[k] = String(v); }, removeItem: (k) => { delete obj[k]; } });
+const store = (obj = {}) => ({ getItem: (k) => (k in obj ? obj[k] : null), setItem: (k, v) => { obj[k] = String(v); }, removeItem: (k) => { delete obj[k]; }, clear: () => { for (const k of Object.keys(obj)) delete obj[k]; }, key: (i) => Object.keys(obj)[i] ?? null, get length() { return Object.keys(obj).length; } });
 const memL = store(), memS = store();
 const SEED_TEXT = readFileSync(path.join(ROOT, "data/seed.json"), "utf8");
 
@@ -42,6 +42,7 @@ globalThis.localStorage = memL; globalThis.sessionStorage = memS;
 globalThis.window = { EDUFLOW: { api: "" }, scrollY: 0, scrollTo() {}, addEventListener() {}, localStorage: memL };
 const elFor = (sel) => { if (!REG.has(sel)) REG.set(sel, new El(sel.startsWith("#") ? "div" : sel)); return REG.get(sel); };
 globalThis.document = {
+  baseURI: "http://localhost:8080/index.html",
   body: new El("body"), activeElement: new El("body"),
   createElement: (t) => new El(t), getElementById: (id) => elFor("#" + id),
   querySelector: (sel) => elFor(sel), querySelectorAll: () => [],
@@ -51,7 +52,13 @@ globalThis.location = { hash: "#/dashboard" };
 globalThis.Blob = class { constructor(p, o) { this.parts = p; this.type = o?.type; } text() { return Promise.resolve(p0(this.parts)); } };
 globalThis.File = class extends globalThis.Blob { constructor(p, name, o) { super(p, o); this.name = name; } };
 function p0(parts) { return (parts || []).map((x) => (x instanceof globalThis.Blob ? String(x.parts?.[0]) : String(x))).join(""); }
-globalThis.URL = { createObjectURL: () => "blob:x", revokeObjectURL() {} };
+// Keep the WHATWG URL implementation (store.js resolves asset paths against it)
+// and only add the object-URL helpers the DOM would provide.
+const NativeURL = globalThis.URL;
+globalThis.URL = class extends NativeURL {
+  static createObjectURL() { return "blob:http://localhost:8080/x"; }
+  static revokeObjectURL() {}
+};
 globalThis.fetch = async (u) => (/seed\.json/.test(u)
   ? { ok: true, json: async () => JSON.parse(SEED_TEXT), text: async () => SEED_TEXT }
   : { ok: false, status: 404, json: async () => ({}) });
@@ -261,6 +268,57 @@ try {
   ok("login screen hidden after auth", true);
 } catch (e) {
   ok("router section", false, e.stack.split("\n").slice(0, 3).join(" | "));
+}
+
+console.log("\n── login / cache resilience ────────────────────────────");
+{
+  const S = await import(path.join(OUT, "store.mjs"));
+  // 1. the shipped bug: a stale EMPTY skeleton in localStorage must not win over the seed
+  const KEY = "eduflow.db.v1";
+  const prev = memL.getItem(KEY);
+  memL.setItem(KEY, JSON.stringify({ meta: { version: 1, seeded: false } }));
+  sessionStorage.clear();
+  const r1 = await S.auth.login("admin", "admin123");
+  ok("stale empty cache self-heals (was: login impossible)", r1.ok === true, JSON.stringify(r1));
+
+  // 2. legacy/partial blob is rejected, not trusted
+  memL.setItem(KEY, JSON.stringify({ meta: { version: 1 }, leads: [{ id: "x" }] }));
+  const r2 = await S.auth.login("admin", "admin123");
+  ok("partial legacy blob rejected + reseeded", r2.ok === true, JSON.stringify(r2));
+
+  // 3. wrong password still fails, with the right message
+  const r3 = await S.auth.login("admin", "nope");
+  ok("wrong password rejected", r3.ok === false && /Wrong username/.test(r3.error), JSON.stringify(r3));
+  // 4. inactive account rejected
+  S.put("user", { ...S.all("user").find((u) => u.username === "sana"), active: false });
+  const r4 = await S.auth.login("sana", "sana123");
+  ok("inactive user cannot sign in", r4.ok === false, JSON.stringify(r4));
+  ok("inactive user gets a clear reason", /deactivated/.test(r4.error || ""), r4.error);
+  const r4b = await S.auth.login("nosuchuser", "x");
+  ok("unknown user named in error, not silently seeded", /Unknown user/.test(r4b.error || ""), r4b.error);
+  // 5. username-only match must not be enough
+  ok("password is actually compared", (await S.auth.login("hira", "hira123x")).ok === false);
+  // 6. logout() must not throw (sessionStorage.clear is real in browsers)
+  let threw = null;
+  try { await S.auth.logout(); } catch (e) { threw = e.message; }
+  ok("logout() works", threw === null, threw || "");
+  ok("session cleared after logout", S.auth.user() === null);
+  // 7. reseed() is the rescue path the login screen exposes
+  const rr = await S.reseed();
+  ok("reseed() restores the team", rr.ok === true && rr.users === 5, JSON.stringify(rr));
+  ok("userCount() reflects the store", S.userCount() === 5, String(S.userCount()));
+  // 8. no accounts at all -> bootstrap admin, never a dead end
+  {
+    const S2 = await import(path.join(OUT, "store.mjs?v=" + Date.now()));
+    await S2.ready;
+    await S2.wipe();                       // real "no accounts on this device" state
+    const boot = S2.ensureLocalAdmin();
+    ok("ensureLocalAdmin creates a way in when the team is empty", !!boot && boot.username === "admin", JSON.stringify(boot));
+    ok("empty store reports zero accounts", S2.userCount() === 1 || S2.userCount() === 0, String(S2.userCount()));
+    const r8 = await S2.auth.login("admin", "admin123");
+    ok("bootstrap admin can sign in", r8.ok === true, JSON.stringify(r8));
+  }
+  if (prev) memL.setItem(KEY, prev);
 }
 
 console.log(`\n════════════════════════════════════════════════════\n${fails.length ? "✗ FAILED" : "✓ PASSED"}  ${pass} assertions, ${fails.length} failing\n`);

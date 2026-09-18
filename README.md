@@ -56,6 +56,25 @@ the same `api/` layer — see [Roadmap](#roadmap).
 
 ---
 
+## If login fails
+
+The demo passwords are `username + "123"` (`admin123`, `sana123`, …). If *no*
+password works, the local browser store was empty or from another build — which
+in v1.0 was a bug (an empty cache blob was accepted as a valid database, so the
+team table stayed empty forever). It now self-heals:
+
+- a stored blob is only trusted if it matches `SCHEMA_VERSION` **and** carries
+  every collection this build expects; anything else is discarded and re-seeded;
+- the login screen shows a **↻ Reseed this device** button and the actual reason
+  (`seed.json HTTP 404`, `Unknown user`, `This account is deactivated`, …);
+- with zero accounts on the device, local mode bootstraps `admin / admin123` so
+  nobody is ever locked out — and a *deactivated* account is never resurrected
+  by that self-heal (checked by `npm run test`).
+
+To start clean yourself: DevTools → Application → Local Storage → delete
+`eduflow.db.v1`, reload. With `api/index.php` enabled, login goes to PHP
+(bcrypt + session) and none of this applies.
+
 ## Architecture
 
 ```

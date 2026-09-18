@@ -6,34 +6,109 @@ import { ENTITIES } from "./config.js";
 import { SEED as DATA } from "./seed.js"; // fallback when data/seed.json is unreachable (file://)
 
 const KEY = "eduflow.db.v1";
-// API endpoint comes from index.html (window.EDUFLOW.api). In a file:// or no-server
-// context we fall back to "" so the app stays 100% local.
-const API = (window.EDUFLOW && window.EDUFLOW.api) || "";
-const SEED_URL = "data/seed.json";   // shared with api/install.php (single source of truth)
+const SCHEMA_VERSION = 1;
+let SEED_ERROR = "";
+// API endpoint comes from index.html (window.EDUFLOW.api). Empty string = stay
+// 100% local on this device. Resolved against the document, so a deploy under
+// /crm/ talks to /crm/api/index.php, not /api/index.php.
+const API = (() => {
+  const rel = (window.EDUFLOW && window.EDUFLOW.api) || "";
+  if (!rel) return "";
+  try { return new URL(rel, document.baseURI).href; } catch { return rel; }
+})();
+const SEED_URL = () => new URL("data/seed.json", document.baseURI).href;  // shared with api/install.php
 const QKEY = "eduflow.queue.v1";
 const listeners = new Set();
 export const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const emit = () => listeners.forEach((f) => f());
 
-let FALLBACK = null;                       // set if data/seed.json is missing
-let db = { meta: { version: 1, seeded: false } };
+// (helper order matters: `db` is initialised at module evaluation time)
+const COLLECTIONS = () => Object.values(ENTITIES).map((e) => e.table);
+function emptyDb() {
+  return { meta: { version: SCHEMA_VERSION, seeded: false }, ...Object.fromEntries(COLLECTIONS().map((t) => [t, []])) };
+}
 
+let FALLBACK = null;                       // populated from data/seed.json
+let db = emptyDb();
+
+/**
+ * A stored blob is only trusted if it matches the current schema AND actually
+ * carries the collections this build expects. An empty/skeleton/legacy blob is
+ * discarded rather than accepted — otherwise a half-written cache permanently
+ * wins over the seed, and (as shipped in v1.0) an empty `users` table meant no
+ * login could ever succeed, on every reload. That was the real bug.
+ */
+function usable(d) {
+  if (!d || !d.meta || d.meta.version !== SCHEMA_VERSION) return false;
+  return COLLECTIONS().every((t) => Array.isArray(d[t]));
+}
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const d = JSON.parse(raw); if (d && d.meta && d.meta.version === 1) return d; }
-  } catch (e) { console.warn("DB reset:", e.message); }
-  return FALLBACK ? structuredClone(FALLBACK) : { meta: { version: 1, seeded: false } };
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (usable(d)) return hydrate(d);
+      console.warn("Stored EduFlow data is empty or from another schema version — reseeding.");
+    }
+  } catch (e) { console.warn("DB unreadable, reseeding:", e.message); }
+  return hydrate(FALLBACK ? structuredClone(FALLBACK) : emptyDb());
+}
+/** Guarantee every collection exists so no view ever dereferences undefined. */
+function hydrate(d) {
+  for (const t of COLLECTIONS()) if (!Array.isArray(d[t])) d[t] = [];
+  if (!Array.isArray(d.audit)) d.audit = [];
+  return d;
+}
+
+async function fetchSeed() {
+  try {
+    const r = await fetch(SEED_URL(), { cache: "no-store" });
+    if (!r.ok) throw new Error(`seed.json HTTP ${r.status}`);
+    const text = await r.text();
+    const d = JSON.parse(text);                    // parse after text, so a proxy
+    if (!d || !d.users?.length) throw new Error("seed.json has no users");   // serving
+    FALLBACK = d; return { ok: true, rows: Object.keys(d).filter((k) => Array.isArray(d[k])).length }; // HTML for 404s
+  } catch (e) {                                     // can't be told apart
+    return { ok: false, error: e.message };
+  }
 }
 async function boot() {
   if (!FALLBACK) {
-    try {
-      const r = await fetch(SEED_URL, { cache: "no-store" });
-      if (r.ok) FALLBACK = await r.json(); else throw new Error("seed.json " + r.status);
-    } catch (e) { console.warn("Seed unavailable — running empty:", e.message); FALLBACK = { meta: { version: 1, seeded: true }, audit: [] }; }
+    const r = await fetchSeed();
+    if (!r.ok) {
+      console.warn("Seed unavailable — trying bundled fallback:", r.error);
+      FALLBACK = structuredClone(DATA);            // inline demo data (file:// / offline host)
+      if (!FALLBACK?.users?.length) FALLBACK = { ...emptyDb(), meta: { version: SCHEMA_VERSION, seeded: false }, bootstrap: true };
+      SEED_ERROR = r.error;
+    }
   }
-  db = load();
-  if (!localStorage.getItem(KEY)) persist();
+  db = hydrate(load());
+  // Self-heal: an empty team table would lock everyone out, so re-seed instead.
+  if (!(db.users || []).length && FALLBACK?.users?.length) {
+    db = structuredClone(FALLBACK);
+    SEED_ERROR = "";
+  }
+  persist();
+}
+/** Re-pull the seed and merge it in. Used by the login screen's rescue button. */
+export async function reseed() {
+  FALLBACK = null; SEED_ERROR = "";
+  const r = await fetchSeed();
+  if (!r.ok) return { ok: false, error: r.error };
+  db = structuredClone(FALLBACK);
+  persist(); emit();
+  return { ok: true, users: db.users.length };
+}
+export const seedError = () => SEED_ERROR;
+export const userCount = () => (db.users || []).length;
+
+/** Local-mode bootstrap admin: never strand someone with no way in. */
+export function ensureLocalAdmin() {
+  db.users = db.users || [];
+  if (db.users.length) return null;
+  const admin = { id: nid("u"), name: "Administrator", username: "admin", pass: "admin123", role: "Admin", branch: "Head Office", email: "", phone: "", active: true, created: today() };
+  db.users.push(admin); persist(); emit();
+  return admin;
 }
 const savedRates = (() => { try { return JSON.parse(localStorage.getItem("eduflow.rates") || "{}"); } catch { return {}; } })();
 import { CURRENCIES } from "./config.js";
@@ -46,7 +121,8 @@ export const dbIsBootstrapped = () => !!db && !!db.meta;
 export const raw = () => db;
 export const save = () => { persist(); emit(); };
 export const resetDemo = () => { db = structuredClone(FALLBACK || DATA); persist(); emit(); };
-export const wipe = () => { db = { meta: { version: 1, seeded: false }, ...(Object.fromEntries(Object.values(ENTITIES).map((e) => [e.table, []]))) }; db.meta.users_table = []; persist(); emit(); };
+/** Empty-but-usable store: every collection present, so no view throws. */
+export const wipe = () => { db = emptyDb(); db.meta.wiped = today(); persist(); emit(); };
 
 export const nowISO = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 export const today = () => new Date().toISOString().slice(0, 10);
@@ -200,6 +276,7 @@ export const auth = {
     return u ? { ...u } : null;
   },
   async login(username, pass) {
+    // Server mode: PHP decides. Everything below is local mode only.
     if (API) {
       try {
         const r = await fetch(`${API}?action=login`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, pass }) });
@@ -212,8 +289,29 @@ export const auth = {
         emit(); return { ok: true };
       } catch (e) { return { ok: false, error: "Server unreachable: " + e.message }; }
     }
-    const u = this.offlineUser(username);
-    if (!u || u.pass !== pass) return { ok: false, error: "Wrong username or password." };
+    let u = this.offlineUser(username);
+    const team = db.users || [];
+    if (!u && team.length === 0) {
+      // Empty team table = broken/never-seeded cache, not a wrong password.
+      // Guarded on length === 0 so a self-heal can never resurrect an account
+      // an admin deliberately deactivated.
+      const r = await reseed();
+      if (r.ok) u = this.offlineUser(username);
+      else {
+        const boot = ensureLocalAdmin();
+        if (boot && username === boot.username) u = boot;
+      }
+    }
+    if (!u && team.length) {
+      return { ok: false, error: team.some((x) => x.username === username)
+        ? "This account is deactivated — ask an admin to re-enable it."
+        : `Unknown user "${username}".` };
+    }
+    if (!u) return { ok: false, error: `No user accounts on this device (${seedError() || "seed unavailable"}). Click "Reseed this device" below, or open the app from a server.` };
+    if (u.pass !== pass) {
+      const hint = !API && SEED_ERROR ? `Seeding issue: ${SEED_ERROR}. ` : "";
+      return { ok: false, error: hint + "Wrong username or password." };
+    }
     const { pass: _, ...safe } = u;
     sessionStorage.setItem("eduflow.session", JSON.stringify(safe));
     emit(); return { ok: true };

@@ -2,7 +2,7 @@
 // Router + auth + generic (config-generated) list / kanban / record views.
 // ============================================================================
 import { BRAND, COUNTRIES, CURRENCIES, ENTITIES, STAGES } from "./config.js";
-import { all, apiEnabled, auth, exportCSV, get, importCSV, importJSON, onChange, put, ready, remove, syncFlush, syncPending, syncPull, title, today } from "./store.js";
+import { all, apiEnabled, auth, exportCSV, get, importCSV, importJSON, onChange, put, ready, reseed, remove, seedError, syncFlush, syncPending, syncPull, title, today, userCount } from "./store.js";
 import { alerts } from "./automation.js";
 import { bindKanban, bindRecord, confirmBox, esc, kanban, modal, recordForm, recordPage, table, toast } from "./ui.js";
 import { DASHBOARD, DOCUMENTS, REPORTS, TEMPLATES, ADMIN } from "./views.js";
@@ -36,7 +36,13 @@ function boot() {
   const u = auth.user();
   $("#login").classList.toggle("hidden", !!u);
   $("#app").classList.toggle("hidden", !u);
-  if (!u) return;
+  if (!u) {
+    // Surface a broken cache as a fixable state instead of a dead login form.
+    const n = apiEnabled() ? -1 : userCount();
+    const msg = n === 0 ? `This device has no accounts yet (${seedError() || "empty local store"}).` : "";
+    if (msg) { $("#lerr").textContent = msg; $("#reseed").classList.remove("hidden"); }
+    return;
+  }
   $("#who").innerHTML = `<b>${esc(u.name)}</b><span>${esc(u.role)} · ${esc(u.branch || "")}</span>`;
   renderNav(); renderSync(); route();
 }
@@ -204,6 +210,11 @@ function bindChrome() {
   };
   $("#importfile").onchange = (e) => { const f = e.target.files[0]; if (!f) return; importJSON(f).then(() => { toast("Backup restored"); boot(); }); };
   $("#alertbtn").onclick = alertFeed;
+  $("#reseed").onclick = async () => {
+    const r = await reseed();
+    $("#lerr").textContent = r.ok ? `Reseeded — ${r.users} account(s). Sign in again.` : `Reseed failed: ${r.error}`;
+    if (r.ok) $("#reseed").classList.add("hidden");
+  };
   $("#quick").onclick = quickCreate;
   const gs = $("#gsearch");
   gs.addEventListener("input", () => { clearTimeout(bindChrome._t); bindChrome._t = setTimeout(() => searchFeed(gs.value), 200); });
@@ -216,7 +227,11 @@ function bindChrome() {
     $("#lerr").textContent = apiEnabled() ? "Signing in…" : "Signing in…";
     const r = await auth.login($("#lu").value.trim(), $("#lp").value);
     if (r.ok) { toast(apiEnabled() ? "Signed in — data pulled from server" : "Signed in (local mode)"); boot(); }
-    else { $("#lerr").textContent = r.error; $("#lform").querySelector("input[type=password]").focus(); }
+    else {
+      $("#lerr").textContent = r.error;
+      $("#reseed").classList.toggle("hidden", !!apiEnabled() && !/local/.test(r.error));
+      $("#lform").querySelector("input[type=password]").focus();
+    }
   });
   onChange(renderSync);
   window.addEventListener("hashchange", route);

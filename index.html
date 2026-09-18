@@ -19,11 +19,12 @@
     <div class="lbrand">🎓 <b>EduFlow</b> CRM</div>
     <p class="lmuted">Study Abroad &amp; Visa Consultancy · UK · Ireland · Türkiye · Malaysia</p>
     <label>Username<input id="lu" autocomplete="username" value="admin" required/></label>
-    <label>Password<input id="lp" type="password" autocomplete="current-password" value="" placeholder="admin123" required/></label>
+    <label>Password<input id="lp" type="password" autocomplete="current-password" value="admin123" required/></label>
     <button class="btn primary block">Sign in</button>
     <p class="lerr" id="lerr"></p>
-    <p class="lmuted tiny">Demo users: <code>admin/sana/bilal/hira/usman</code> · password = username + “123”.
-    With the PHP API enabled, auth moves to bcrypt + server sessions.</p>
+    <button type="button" class="btn xs block ghost hidden" id="reseed">↻ Reseed this device from data/seed.json</button>
+    <p class="lmuted tiny">Demo users: <code>admin</code> · <code>sana</code> · <code>bilal</code> · <code>hira</code> · <code>usman</code>
+    — password is the username + <code>123</code>. With the PHP API enabled, auth moves to bcrypt + server sessions.</p>
   </form>
 </div>
 

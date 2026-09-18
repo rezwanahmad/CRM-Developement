@@ -1,0 +1,24 @@
+{
+  "name": "EduFlow CRM — Study Abroad & Visa Consultancy",
+  "short_name": "EduFlow CRM",
+  "description": "Leads, applications, document checklists, deadlines, fees and agent commissions for education visa consultancies.",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1220",
+  "theme_color": "#f97316",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New lead", "url": "./index.html#/lead", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Pipeline", "url": "./index.html#/pipeline", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Attention queue", "url": "./index.html#/followup", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

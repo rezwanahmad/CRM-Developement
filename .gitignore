@@ -1,0 +1,7 @@
+node_modules/
+.harness/
+*.log
+.DS_Store
+.webpacked/
+api/config.local.php
+data/*.bak

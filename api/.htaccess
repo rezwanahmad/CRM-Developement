@@ -1,0 +1,17 @@
+# The API folder must never expose its source. config.php has no exit guard of
+# its own, so deny direct requests to everything except the two entry points.
+<IfModule mod_authz_core.c>
+  Require all denied
+  <FilesMatch "^(index|install)\.php$">
+    Require all granted
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+  <FilesMatch "^(index|install)\.php$">
+    Allow from all
+  </FilesMatch>
+</IfModule>
+Options -Indexes -ExecCgi
+php_flag engine on

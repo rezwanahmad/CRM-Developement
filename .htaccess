@@ -1,0 +1,64 @@
+# EduFlow CRM — Apache config for cPanel / shared hosting.
+# Harmless if ignored by Nginx; add the marked block to your Nginx server {} if you own the box.
+
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Single-page app: unknown paths fall back to index.html (keeps #/ routes safe either way)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/api/
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Never serve backups / dumps / dot-files from the web root. (data/seed.json is
+# intentionally public: it is demo data with no PII. Your real records live in
+# MySQL behind api/index.php, never as files.)
+<FilesMatch "\.(md|log|sql|bak|env|ini|lock|tsbuildinfo)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+RedirectMatch 404 ^/package\.json$
+RedirectMatch 404 ^/(app|scripts|test|data)/.*\.(?!js|css|json)
+<Files "sw.js">
+  <IfModule mod_headers.c>
+    Header set Service-Worker-Allowed "/"
+  </IfModule>
+</Files>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "same-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  # CSP: no external hosts at all — the app is deliberately dependency-free.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript text/javascript application/json image/svg+xml
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  # The app shell must always revalidate, or teams get stale versions after you deploy.
+  ExpiresByType text/html                 "access plus 0 seconds"
+  ExpiresByType application/manifest+json "access plus 0 seconds"
+  ExpiresByType application/javascript    "access plus 1 hour"
+  ExpiresByType text/css                  "access plus 1 hour"
+  ExpiresByType application/json          "access plus 5 minutes"
+</IfModule>
+
+# Block directory listing of sensitive folders
+RedirectMatch 404 ^/(scripts|test|\.harness|node_modules)(/|$)

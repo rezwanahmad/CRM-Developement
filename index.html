@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>EduFlow CRM · Study Abroad & Visa Consultancy</title>
+<meta name="description" content="CRM for education visa consultancies: leads, applications, document checklists, deadlines, fees and agent commissions."/>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="icon" href="assets/icon-192.png" sizes="192x192"/>
+<link rel="apple-touch-icon" href="assets/icon-192.png"/>
+<meta name="theme-color" content="#f97316"/>
+<link rel="stylesheet" href="styles.css"/>
+<meta name="robots" content="noindex, nofollow"/>
+</head>
+<body>
+
+<div id="login" class="login hidden">
+  <form class="lcard" id="lform">
+    <div class="lbrand">🎓 <b>EduFlow</b> CRM</div>
+    <p class="lmuted">Study Abroad &amp; Visa Consultancy · UK · Ireland · Türkiye · Malaysia</p>
+    <label>Username<input id="lu" autocomplete="username" value="admin" required/></label>
+    <label>Password<input id="lp" type="password" autocomplete="current-password" value="" placeholder="admin123" required/></label>
+    <button class="btn primary block">Sign in</button>
+    <p class="lerr" id="lerr"></p>
+    <p class="lmuted tiny">Demo users: <code>admin/sana/bilal/hira/usman</code> · password = username + “123”.
+    With the PHP API enabled, auth moves to bcrypt + server sessions.</p>
+  </form>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="side">
+    <a class="logo" href="#/dashboard">🎓 <span>EduFlow<b>CRM</b></span></a>
+    <nav id="nav"></nav>
+    <div class="sfoot">
+      <div class="who" id="who"></div>
+      <div class="syncbar"><span id="syncstate">● offline · local storage</span><button id="pull" class="btn xs ghost">↻ Sync</button></div>
+      <label class="btn xs block ghost" for="importfile">⇪ Import JSON backup</label>
+      <input type="file" id="importfile" accept=".json" hidden/>
+      <button id="logout" class="btn xs block">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <button class="burger" id="burger">☰</button>
+      <div class="searchwrap"><span>🔍</span><input id="gsearch" placeholder="Search students, applications, invoices… ( / )"/></div>
+      <div class="top-actions">
+        <button class="btn sm" id="quick">＋ New</button>
+        <button class="btn sm ghost" id="alertbtn" title="Alerts">⚠ <b id="alertcount">0</b></button>
+      </div>
+    </header>
+    <div id="root" class="root"></div>
+  </main>
+</div>
+
+<div id="toasts"></div>
+<script>window.EDUFLOW = { api: "" } /* set to "api/index.php" after installing the PHP layer */;</script>
+<script type="module" src="app/app.js"></script>
+</body>
+</html>

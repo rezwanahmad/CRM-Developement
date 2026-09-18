@@ -34,10 +34,10 @@ const NAV = [
 const $ = (s) => document.querySelector(s);
 function boot() {
   const u = auth.user();
-  $("#authbadge").classList.toggle("hidden", AUTH_ENABLED);
   $("#logout").textContent = AUTH_ENABLED ? "Sign out" : "↺ Reload from storage";
-  $("#login").classList.toggle("hidden", AUTH_ENABLED && !u);
-  $("#app").classList.toggle("hidden", AUTH_ENABLED && !u);
+  // Auth off ⇒ the login card is never shown, and #app is visible from the first
+  // paint (index.html ships without .hidden), so there is nothing to un-hide.
+  if (AUTH_ENABLED) { $("#login").classList.toggle("hidden", !!u); $("#app").classList.toggle("hidden", !u); }
   if (AUTH_ENABLED && !u) {
     // Surface a broken cache as a fixable state instead of a dead login form.
     const n = apiEnabled() ? -1 : userCount();
@@ -275,7 +275,16 @@ function quickCreate() {
 // ------------------------------------------------------------ start
 ready.then(async () => {
   if ("serviceWorker" in navigator) {
-    try { await navigator.serviceWorker.register("sw.js"); } catch (e) { console.info("SW skipped:", e.message); }
+    // The SW URL carries the deploy stamp, so a new build is a new SW file: the
+    // browser refetches it, its new cache version drops the stale shell, and
+    // skipWaiting means nobody has to "close all tabs and reopen" after a deploy.
+    const stamp = (document.querySelector("script[src*='app/app.js']")?.src.split("?v=")[1]) || "v1";
+    try {
+      const reg = await navigator.serviceWorker.register(`sw.js?v=${stamp}`);
+      await navigator.serviceWorker.ready;
+      reg?.waiting?.postMessage("skip-waiting");
+      console.info("EduFlow build", stamp);
+    } catch (e) { console.info("SW skipped:", e.message); }
   }
   if (AUTH_ENABLED && apiEnabled() && !auth.user()) await auth.resume();   // keep the PHP session
   boot();

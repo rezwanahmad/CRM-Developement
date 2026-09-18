@@ -366,5 +366,22 @@ console.log("\n── auth switch precedence (pure resolver) ──────�
   ok("precedence: fails safe (protected) when flag absent", resolve("", null, undefined) === true);
 }
 
+console.log("\n── served files (auth-off must be invisible) ───────────");
+{
+  const html = readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const sw = readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  ok("index.html ships auth: false", /window\.EDUFLOW\s*=\s*\{[^}]*auth:\s*false/.test(html), html.match(/window\.EDUFLOW[^;]*/)?.[0]);
+  ok("no dev-mode badge markup in the shell", !/authbadge|login off/i.test(html));
+  ok("no badge styling left behind", !readFileSync(path.join(ROOT, "styles.css"), "utf8").includes(".authbadge"));
+  ok("#app is visible on first paint (no flash of the login card)", !/<div id="app" class="app hidden">/.test(html));
+  ok("#login ships hidden", /<div id="login" class="login hidden">/.test(html));
+  ok("app shell carries a build stamp", /app\/app\.js\?v=\d+/.test(html));
+  ok("service worker reads that stamp for its cache key", /new URL\(self\.location\)\.searchParams\.get\("v"\)/.test(sw));
+  ok("sw install tolerates a missing optional asset", /Promise\.all\(SHELL\.map/.test(sw));
+  ok("never-cached list keeps data out of the SW", /index\.php|seed\.json/.test(sw));
+  const served = html.match(/<link rel="manifest"[^>]*>/)?.[0] || "";
+  ok("manifest still linked", /manifest\.webmanifest/.test(served), served);
+}
+
 console.log(`\n════════════════════════════════════════════════════\n${fails.length ? "✗ FAILED" : "✓ PASSED"}  ${pass} assertions, ${fails.length} failing\n`);
 process.exit(fails.length ? 1 : 0);

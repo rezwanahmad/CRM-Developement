@@ -3,11 +3,13 @@
  * from localStorage (local mode) or api/index.php (team mode); both stay out of
  * the cache so a counsellor is never looking at yesterday's pipeline.
  */
-const VERSION = "eduflow-v1";
+// Bump by changing `?v=` in index.html — the SW URL itself changes, so the
+// browser refetches this file and the new VERSION invalidates the old shell.
+const VERSION = "eduflow-" + (new URL(self.location).searchParams.get("v") || "v2");
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
+  "./styles.css?v=" + (new URL(self.location).searchParams.get("v") || "v1"),
   "./manifest.webmanifest",
   "./app/app.js",
   "./app/config.js",
@@ -21,7 +23,9 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()).catch(() => self.skipWaiting()));
+  // Promise.all rather than addAll: one missing optional asset must not abort
+  // the install and leave the previous (stale) shell in place forever.
+  e.waitUntil(caches.open(VERSION).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {

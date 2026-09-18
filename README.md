@@ -24,9 +24,15 @@ npm start            # builds data/seed.json, then serves on 0.0.0.0:8080
 ```
 
 **There is no login during development** (`window.EDUFLOW.auth = false` in
-`index.html`). The sign-in screen, session handling and role scoping are all
-still implemented and switched off from one place, so re-enabling at go-live is
-a one-line change — see [Going live](#going-live-checklist).
+`index.html`) and nothing about it is printed in the UI — the login card is
+simply never rendered. Session handling, role scoping and the PHP auth path are
+all still implemented behind that one flag, so re-enabling at go-live is a
+one-line change — see [Going live](#going-live-checklist).
+
+**Deploys refresh themselves.** `?v=N` in `index.html` is the build stamp: it
+names the service-worker cache *and* busts the HTTP cache for the app shell.
+After changing CSS or `app/`, bump that number and every open browser picks up
+the new build on next load instead of serving a cached old one.
 
 No Node on the machine? `python3 -m http.server 8080` works the same.
 Opening `index.html` straight from disk does **not** — browsers block ES modules

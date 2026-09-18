@@ -63,8 +63,12 @@ password works, the local browser store was empty or from another build — whic
 in v1.0 was a bug (an empty cache blob was accepted as a valid database, so the
 team table stayed empty forever). It now self-heals:
 
-- a stored blob is only trusted if it matches `SCHEMA_VERSION` **and** carries
-  every collection this build expects; anything else is discarded and re-seeded;
+- a stored blob is only trusted if it matches `SCHEMA_VERSION`, carries the
+  current `build` stamp, **and** has every collection this build expects as an
+  array. Anything else (including the poisoned empty blob) is discarded and
+  re-seeded automatically — so a reload alone fixes an already-broken device;
+- boot() no longer blindly re-persists, so data committed between module init and
+  boot (a JSON restore, another tab) is not clobbered by the seed;
 - the login screen shows a **↻ Reseed this device** button and the actual reason
   (`seed.json HTTP 404`, `Unknown user`, `This account is deactivated`, …);
 - with zero accounts on the device, local mode bootstraps `admin / admin123` so
@@ -72,7 +76,7 @@ team table stayed empty forever). It now self-heals:
   by that self-heal (checked by `npm run test`).
 
 To start clean yourself: DevTools → Application → Local Storage → delete
-`eduflow.db.v1`, reload. With `api/index.php` enabled, login goes to PHP
+`eduflow.db.v1`, reload (or click “Reset demo data” in `#/admin`). With `api/index.php` enabled, login goes to PHP
 (bcrypt + session) and none of this applies.
 
 ## Architecture

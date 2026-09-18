@@ -276,6 +276,7 @@ console.log("\n── login / cache resilience ───────────
   // 1. the shipped bug: a stale EMPTY skeleton in localStorage must not win over the seed
   const KEY = "eduflow.db.v1";
   const prev = memL.getItem(KEY);
+  // exactly the poisoned shape v1.0 shipped: valid version, zero-length everywhere
   memL.setItem(KEY, JSON.stringify({ meta: { version: 1, seeded: false } }));
   sessionStorage.clear();
   const r1 = await S.auth.login("admin", "admin123");
@@ -286,6 +287,30 @@ console.log("\n── login / cache resilience ───────────
   const r2 = await S.auth.login("admin", "admin123");
   ok("partial legacy blob rejected + reseeded", r2.ok === true, JSON.stringify(r2));
 
+  // 2b. a CURRENT-shape store must be preserved, never silently reseeded
+  const keep = JSON.parse(memL.getItem(KEY));
+  keep.meta.build = "v1.0.1";
+  keep.leads = keep.leads.slice(0, 2);
+  memL.setItem(KEY, JSON.stringify(keep));
+  const rKeep = await S.auth.login("admin", "admin123");
+  ok("valid current-shape store is preserved (no silent reseed)", rKeep.ok === true && S.all("lead").length === 11, `login=${rKeep.ok} leads=${S.all("lead").length}`);
+  // external write between init and boot must not be clobbered by boot()'s persist
+  // external write committed through the store between boot and a later load
+  // (a JSON restore, another tab's write) must survive the next boot's persist
+  const beforeBoot = S.all("lead").length;
+  S.put("lead", { id: "mine-1", name: "My Own Lead", phone: "x", stage: "new" });
+  const S3 = await import(path.join(OUT, "store.mjs?v2=" + Date.now()));
+  await S3.ready;
+  ok("committed data survives a later boot (no clobber)", S3.all("lead").some((l) => l.id === "mine-1"), JSON.stringify(S3.all("lead").map((l) => l.id).slice(0, 4)));
+  ok("preserved store is not padded with demo rows", S3.all("lead").length === beforeBoot + 1, `${beforeBoot} -> ${S3.all("lead").length}`);
+  const snap = JSON.parse(memL.getItem(KEY));
+  // 2c. legacy stamp (no build key) is discarded even if otherwise well-formed
+  snap.meta.build = undefined; snap.meta.version = 1;
+  memL.setItem(KEY, JSON.stringify(snap));
+  const S4 = await import(path.join(OUT, "store.mjs?v3=" + Date.now()));
+  await S4.ready;
+  ok("legacy un-stamped store triggers reseed (fixes already-poisoned devices)", S4.all("lead").length > 1, `leads=${S4.all("lead").length}`);
+  memL.setItem(KEY, JSON.stringify(keep));
   // 3. wrong password still fails, with the right message
   const r3 = await S.auth.login("admin", "nope");
   ok("wrong password rejected", r3.ok === false && /Wrong username/.test(r3.error), JSON.stringify(r3));

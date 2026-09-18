@@ -7,6 +7,7 @@ import { SEED as DATA } from "./seed.js"; // fallback when data/seed.json is unr
 
 const KEY = "eduflow.db.v1";
 const SCHEMA_VERSION = 1;
+const BUILD_KEY = "v1.0.1";   // bump on any store-shape change: older/legacy blobs are discarded
 let SEED_ERROR = "";
 // API endpoint comes from index.html (window.EDUFLOW.api). Empty string = stay
 // 100% local on this device. Resolved against the document, so a deploy under
@@ -25,7 +26,7 @@ const emit = () => listeners.forEach((f) => f());
 // (helper order matters: `db` is initialised at module evaluation time)
 const COLLECTIONS = () => Object.values(ENTITIES).map((e) => e.table);
 function emptyDb() {
-  return { meta: { version: SCHEMA_VERSION, seeded: false }, ...Object.fromEntries(COLLECTIONS().map((t) => [t, []])) };
+  return { meta: { version: SCHEMA_VERSION, seeded: false, build: BUILD_KEY }, ...Object.fromEntries(COLLECTIONS().map((t) => [t, []])) };
 }
 
 let FALLBACK = null;                       // populated from data/seed.json
@@ -40,6 +41,9 @@ let db = emptyDb();
  */
 function usable(d) {
   if (!d || !d.meta || d.meta.version !== SCHEMA_VERSION) return false;
+  // Legacy blobs (pre-fix, incl. the empty skeleton that caused the lockout)
+  // carry no build stamp, so they are discarded instead of being trusted.
+  if (d.meta.build !== BUILD_KEY) { console.warn("Stored data predates this build — reseeding."); return false; }
   return COLLECTIONS().every((t) => Array.isArray(d[t]));
 }
 function load() {
@@ -57,6 +61,7 @@ function load() {
 function hydrate(d) {
   for (const t of COLLECTIONS()) if (!Array.isArray(d[t])) d[t] = [];
   if (!Array.isArray(d.audit)) d.audit = [];
+  d.meta = { ...d.meta, version: SCHEMA_VERSION, build: BUILD_KEY };
   return d;
 }
 

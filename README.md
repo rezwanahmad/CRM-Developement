@@ -30,9 +30,12 @@ all still implemented behind that one flag, so re-enabling at go-live is a
 one-line change — see [Going live](#going-live-checklist).
 
 **Deploys refresh themselves.** `?v=N` in `index.html` is the build stamp: it
-names the service-worker cache *and* busts the HTTP cache for the app shell.
-After changing CSS or `app/`, bump that number and every open browser picks up
-the new build on next load instead of serving a cached old one.
+names the app module, the stylesheet and the service-worker URL, so bumping it
+produces a new SW cache version and the old shell is deleted on activate.
+Navigation is always network-first (cache only as the offline fallback), so a
+deployed fix cannot be hidden behind a cached page. **Bump that number on every
+deploy** — it is the whole versioning story. If a browser still looks stale, one
+hard reload settles it.
 
 No Node on the machine? `python3 -m http.server 8080` works the same.
 Opening `index.html` straight from disk does **not** — browsers block ES modules

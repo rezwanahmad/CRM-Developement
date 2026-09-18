@@ -22,10 +22,21 @@ const SHELL = [
   "./assets/icon-512.png",
 ];
 
+// Stale-cache deadlock breaker. A client only refetches index.html (and thus a
+// new sw.js) if its cached shell can expire; on hosts whose mod_expires rules
+// outlive the cache first being written, an app-shell cache can strand users on
+// an old build indefinitely. So navigation always goes to the network and the
+// cache is used only when the network genuinely fails (offline branch office).
+const NETWORK_FOR_SHELL = true;
+
 self.addEventListener("install", (e) => {
   // Promise.all rather than addAll: one missing optional asset must not abort
   // the install and leave the previous (stale) shell in place forever.
-  e.waitUntil(caches.open(VERSION).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(VERSION)
+      .then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => {}))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -48,6 +59,10 @@ self.addEventListener("fetch", (e) => {
   // Navigation: network first so a deploy is visible on next reload, cache as the
   // offline fallback (branch office with a dead internet line still opens the CRM).
   if (req.mode === "navigate") {
+    if (NETWORK_FOR_SHELL) {
+      e.respondWith(fetch(req).catch(() => caches.match("./index.html")));
+      return;
+    }
     e.respondWith(
       fetch(req)
         .then((res) => {

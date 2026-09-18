@@ -1,8 +1,8 @@
 // ============================================================================
 // Router + auth + generic (config-generated) list / kanban / record views.
 // ============================================================================
-import { BRAND, COUNTRIES, CURRENCIES, ENTITIES, STAGES } from "./config.js";
-import { all, apiEnabled, auth, exportCSV, get, importCSV, importJSON, onChange, put, ready, reseed, remove, seedError, syncFlush, syncPending, syncPull, title, today, userCount } from "./store.js";
+import { AUTH_ENABLED, BRAND, COUNTRIES, CURRENCIES, ENTITIES, STAGES } from "./config.js";
+import { all, apiEnabled, auth, exportCSV, get, importCSV, importJSON, onChange, put, ready, reseed, remove, save, seedError, syncFlush, syncPending, syncPull, title, today, userCount } from "./store.js";
 import { alerts } from "./automation.js";
 import { bindKanban, bindRecord, confirmBox, esc, kanban, modal, recordForm, recordPage, table, toast } from "./ui.js";
 import { DASHBOARD, DOCUMENTS, REPORTS, TEMPLATES, ADMIN } from "./views.js";
@@ -34,16 +34,18 @@ const NAV = [
 const $ = (s) => document.querySelector(s);
 function boot() {
   const u = auth.user();
-  $("#login").classList.toggle("hidden", !!u);
-  $("#app").classList.toggle("hidden", !u);
-  if (!u) {
+  $("#authbadge").classList.toggle("hidden", AUTH_ENABLED);
+  $("#logout").textContent = AUTH_ENABLED ? "Sign out" : "↺ Reload from storage";
+  $("#login").classList.toggle("hidden", AUTH_ENABLED && !u);
+  $("#app").classList.toggle("hidden", AUTH_ENABLED && !u);
+  if (AUTH_ENABLED && !u) {
     // Surface a broken cache as a fixable state instead of a dead login form.
     const n = apiEnabled() ? -1 : userCount();
     const msg = n === 0 ? `This device has no accounts yet (${seedError() || "empty local store"}).` : "";
     if (msg) { $("#lerr").textContent = msg; $("#reseed").classList.remove("hidden"); }
     return;
   }
-  $("#who").innerHTML = `<b>${esc(u.name)}</b><span>${esc(u.role)} · ${esc(u.branch || "")}</span>`;
+  $("#who").innerHTML = `<b>${esc(u.name)}</b><span>${esc(u.role)} · ${esc(u.branch || "")}${AUTH_ENABLED ? "" : " · auth off"}</span>`;
   renderNav(); renderSync(); route();
 }
 function renderNav() {
@@ -54,8 +56,7 @@ function renderNav() {
   } catch (e) {}
   $("#nav").innerHTML = NAV.map((n) => {
     if (n.g) return `<div class="grp">${esc(n.g)}</div>`;
-    if (n.admin && !["Admin", "Manager"].includes(auth.user()?.role)) return "";
-    if (!auth.can(n.id) && n.id !== "admin") return "";
+    if (!auth.can(n.id)) return "";
     const c = n.badge === "mine" ? mine : n.badge === "stale" ? stale : (n.entity ? all(n.entity).length : 0);
     return `<a href="#/${n.id}" data-nav="${n.id}"><span class="ic">${n.icon}</span>${esc(n.t)}${c ? `<span class="n">${c}</span>` : ""}</a>`;
   }).join("");
@@ -201,7 +202,10 @@ function recordView(entity, id) {
 // ------------------------------------------------------------ global chrome
 function bindChrome() {
   $("#burger").onclick = () => $("#app").classList.toggle("open");
-  $("#logout").onclick = async () => { await auth.logout(); location.hash = "#/dashboard"; boot(); };
+  $("#logout").onclick = async () => {
+    if (!AUTH_ENABLED) { save(); boot(); toast("Data reloaded from local storage"); return; }
+    await auth.logout(); location.hash = "#/dashboard"; boot();
+  };
   $("#pull").onclick = async () => {
     if (!apiEnabled()) { toast("Local mode — edits save to this browser. Turn on api/index.php in index.html for team sync."); return; }
     const f = await syncFlush(); const p = await syncPull();
@@ -222,7 +226,8 @@ function bindChrome() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); gs.focus(); }
   });
-  $("#lform").addEventListener("submit", async (e) => {
+  const lform = $("#lform");
+  if (lform) lform.addEventListener("submit", async (e) => {
     e.preventDefault();
     $("#lerr").textContent = apiEnabled() ? "Signing in…" : "Signing in…";
     const r = await auth.login($("#lu").value.trim(), $("#lp").value);
@@ -272,7 +277,7 @@ ready.then(async () => {
   if ("serviceWorker" in navigator) {
     try { await navigator.serviceWorker.register("sw.js"); } catch (e) { console.info("SW skipped:", e.message); }
   }
-  if (apiEnabled() && !auth.user()) await auth.resume();   // keep the PHP session
+  if (AUTH_ENABLED && apiEnabled() && !auth.user()) await auth.resume();   // keep the PHP session
   boot();
 }).catch((e) => {
   console.error(e);

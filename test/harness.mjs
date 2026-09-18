@@ -39,7 +39,9 @@ const memL = store(), memS = store();
 const SEED_TEXT = readFileSync(path.join(ROOT, "data/seed.json"), "utf8");
 
 globalThis.localStorage = memL; globalThis.sessionStorage = memS;
-globalThis.window = { EDUFLOW: { api: "" }, scrollY: 0, scrollTo() {}, addEventListener() {}, localStorage: memL };
+// Harness pins auth ON so the login/session paths stay under test; the
+// auth-off development mode gets its own assertions with a fresh instance.
+globalThis.window = { EDUFLOW: { api: "", auth: true }, scrollY: 0, scrollTo() {}, addEventListener() {}, localStorage: memL };
 const elFor = (sel) => { if (!REG.has(sel)) REG.set(sel, new El(sel.startsWith("#") ? "div" : sel)); return REG.get(sel); };
 globalThis.document = {
   baseURI: "http://localhost:8080/index.html",
@@ -48,7 +50,7 @@ globalThis.document = {
   querySelector: (sel) => elFor(sel), querySelectorAll: () => [],
   addEventListener() {}, removeEventListener() {},
 };
-globalThis.location = { hash: "#/dashboard" };
+globalThis.location = { hash: "#/dashboard", search: "" };
 globalThis.Blob = class { constructor(p, o) { this.parts = p; this.type = o?.type; } text() { return Promise.resolve(p0(this.parts)); } };
 globalThis.File = class extends globalThis.Blob { constructor(p, name, o) { super(p, o); this.name = name; } };
 function p0(parts) { return (parts || []).map((x) => (x instanceof globalThis.Blob ? String(x.parts?.[0]) : String(x))).join(""); }
@@ -69,6 +71,8 @@ globalThis.customElements = { define() {} };
 
 // ---- assertions -------------------------------------------------------------
 let pass = 0; const fails = [];
+const authOffCase = "test/case-auth-off.mjs";   // needs its own process: AUTH_ENABLED is an evaluated const
+let V = 0; const v = () => `?v=${++V}`;   // monotonic: Date.now() collides within a ms
 const ok = (name, cond, extra = "") => {
   if (cond) { pass++; console.log(`  ✓ ${name}`); }
   else { fails.push(name + (extra ? ` → ${extra}` : "")); console.log(`  ✗ ${name}${extra ? " → " + extra : ""}`); }
@@ -272,7 +276,7 @@ try {
 
 console.log("\n── login / cache resilience ────────────────────────────");
 {
-  const S = await import(path.join(OUT, "store.mjs"));
+  const S = await import(path.join(OUT, "store.mjs") + v());
   // 1. the shipped bug: a stale EMPTY skeleton in localStorage must not win over the seed
   const KEY = "eduflow.db.v1";
   const prev = memL.getItem(KEY);
@@ -299,7 +303,7 @@ console.log("\n── login / cache resilience ───────────
   // (a JSON restore, another tab's write) must survive the next boot's persist
   const beforeBoot = S.all("lead").length;
   S.put("lead", { id: "mine-1", name: "My Own Lead", phone: "x", stage: "new" });
-  const S3 = await import(path.join(OUT, "store.mjs?v2=" + Date.now()));
+  const S3 = await import(path.join(OUT, "store.mjs") + v());
   await S3.ready;
   ok("committed data survives a later boot (no clobber)", S3.all("lead").some((l) => l.id === "mine-1"), JSON.stringify(S3.all("lead").map((l) => l.id).slice(0, 4)));
   ok("preserved store is not padded with demo rows", S3.all("lead").length === beforeBoot + 1, `${beforeBoot} -> ${S3.all("lead").length}`);
@@ -307,7 +311,7 @@ console.log("\n── login / cache resilience ───────────
   // 2c. legacy stamp (no build key) is discarded even if otherwise well-formed
   snap.meta.build = undefined; snap.meta.version = 1;
   memL.setItem(KEY, JSON.stringify(snap));
-  const S4 = await import(path.join(OUT, "store.mjs?v3=" + Date.now()));
+  const S4 = await import(path.join(OUT, "store.mjs") + v());
   await S4.ready;
   ok("legacy un-stamped store triggers reseed (fixes already-poisoned devices)", S4.all("lead").length > 1, `leads=${S4.all("lead").length}`);
   memL.setItem(KEY, JSON.stringify(keep));
@@ -334,7 +338,7 @@ console.log("\n── login / cache resilience ───────────
   ok("userCount() reflects the store", S.userCount() === 5, String(S.userCount()));
   // 8. no accounts at all -> bootstrap admin, never a dead end
   {
-    const S2 = await import(path.join(OUT, "store.mjs?v=" + Date.now()));
+    const S2 = await import(path.join(OUT, "store.mjs") + v());
     await S2.ready;
     await S2.wipe();                       // real "no accounts on this device" state
     const boot = S2.ensureLocalAdmin();
@@ -344,6 +348,22 @@ console.log("\n── login / cache resilience ───────────
     ok("bootstrap admin can sign in", r8.ok === true, JSON.stringify(r8));
   }
   if (prev) memL.setItem(KEY, prev);
+}
+
+console.log("\n── auth switch precedence (pure resolver) ──────────────");
+{
+  // The precedence order itself (URL > saved Settings flag > index.html > default-on),
+  // asserted against the pure resolver rather than by re-importing modules.
+  const resolve = (search, saved, flag) => {
+    const q = new URLSearchParams(search).get("auth");
+    if (q !== null) return q !== "0";
+    if (saved !== null) return saved === "1";
+    return flag !== false;
+  };
+  ok("precedence: ?auth= overrides everything", resolve("?auth=1", "0", false) === true && resolve("?auth=0", "1", true) === false);
+  ok("precedence: Settings flag beats index.html", resolve("", "0", true) === false && resolve("", "1", false) === true);
+  ok("precedence: index.html used when nothing saved", resolve("", null, false) === false && resolve("", null, true) === true);
+  ok("precedence: fails safe (protected) when flag absent", resolve("", null, undefined) === true);
 }
 
 console.log(`\n════════════════════════════════════════════════════\n${fails.length ? "✗ FAILED" : "✓ PASSED"}  ${pass} assertions, ${fails.length} failing\n`);

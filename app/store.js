@@ -2,7 +2,7 @@
 // Storage layer. Works 100% offline on localStorage; if api/index.php exists
 // on the host it queues writes and syncs (multi-user). One module, two modes.
 // ============================================================================
-import { ENTITIES } from "./config.js";
+import { AUTH_ENABLED, DEV_USER, ENTITIES } from "./config.js";
 import { SEED as DATA } from "./seed.js"; // fallback when data/seed.json is unreachable (file://)
 
 const KEY = "eduflow.db.v1";
@@ -272,7 +272,16 @@ function dl(blob, name) { const a = document.createElement("a"); a.href = URL.cr
 
 // --- Auth (offline password check, or server auth when the PHP API is on) ---
 export const auth = {
-  user() { try { return JSON.parse(sessionStorage.getItem("eduflow.session") || "null"); } catch { return null; } },
+  /**
+   * With AUTH_ENABLED false (development) this always returns an admin, so the
+   * app opens without a login and no view needs a "signed out" branch. Flip the
+   * switch and this reverts to reading the real session — no other code changes.
+   */
+  enabled() { return AUTH_ENABLED; },
+  user() {
+    if (!AUTH_ENABLED) return DEV_USER;
+    try { return JSON.parse(sessionStorage.getItem("eduflow.session") || "null"); } catch { return null; }
+  },
   token() { return sessionStorage.getItem("eduflow.csrf") || ""; },
   rev() { return Number(localStorage.getItem("eduflow.rev") || "0"); },
   setRev(n) { localStorage.setItem("eduflow.rev", String(n || 0)); },
@@ -281,6 +290,8 @@ export const auth = {
     return u ? { ...u } : null;
   },
   async login(username, pass) {
+    // Auth switched off for development: nothing to verify, just open the app.
+    if (!AUTH_ENABLED) { emit(); return { ok: true, skipped: true }; }
     // Server mode: PHP decides. Everything below is local mode only.
     if (API) {
       try {
@@ -323,7 +334,7 @@ export const auth = {
   },
   /** Silently resume a live PHP session on reload (cookie survives, sessionStorage may not). */
   async resume() {
-    if (!API) return null;
+    if (!AUTH_ENABLED || !API) return null;
     try {
       const r = await fetch(`${API}?action=me`, { credentials: "include" });
       if (!r.ok) return null;
@@ -335,10 +346,12 @@ export const auth = {
     } catch { return null; }
   },
   async logout() {
+    if (!AUTH_ENABLED) return { ok: true, skipped: true };   // no session to kill
     if (API) { try { await fetch(`${API}?action=logout`, { method: "POST", credentials: "include", headers: { "X-Eduflow-Token": this.token() } }); } catch {} }
     sessionStorage.clear(); emit();
   },
   can(section) {
+    if (!AUTH_ENABLED) return true;           // during development, show everything
     const u = this.user(); if (!u) return false;
     if (["Admin", "Manager"].includes(u.role)) return true;
     const byRole = {

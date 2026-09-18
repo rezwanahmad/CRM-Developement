@@ -14,6 +14,9 @@
 </head>
 <body>
 
+<!-- Login is a REMOVABLE shell: with auth off this stays hidden and is never
+     rendered. Delete this block + the auth lines in index.html at go-live if
+     you prefer, but the toggle below is all you actually need. -->
 <div id="login" class="login hidden">
   <form class="lcard" id="lform">
     <div class="lbrand">🎓 <b>EduFlow</b> CRM</div>
@@ -28,7 +31,7 @@
   </form>
 </div>
 
-<div id="app" class="app hidden">
+<div id="app" class="app">
   <aside class="side">
     <a class="logo" href="#/dashboard">🎓 <span>EduFlow<b>CRM</b></span></a>
     <nav id="nav"></nav>
@@ -45,6 +48,7 @@
     <header class="top">
       <button class="burger" id="burger">☰</button>
       <div class="searchwrap"><span>🔍</span><input id="gsearch" placeholder="Search students, applications, invoices… ( / )"/></div>
+      <span class="authbadge hidden" id="authbadge" title="Authentication is switched off for development. Turn it back on before go-live.">⚑ dev · login off</span>
       <div class="top-actions">
         <button class="btn sm" id="quick">＋ New</button>
         <button class="btn sm ghost" id="alertbtn" title="Alerts">⚠ <b id="alertcount">0</b></button>
@@ -55,7 +59,13 @@
 </div>
 
 <div id="toasts"></div>
-<script>window.EDUFLOW = { api: "" } /* set to "api/index.php" after installing the PHP layer */;</script>
+<script>
+// Project switches. Everything the deployment needs to know lives here.
+//   api  : "" = data stays in this browser. "api/index.php" = shared MySQL team mode.
+//   auth : false = no login screen (development). Remove / set true to require
+//          sign-in; with `api` enabled that check happens in PHP (bcrypt + session).
+window.EDUFLOW = { api: "", auth: false };
+</script>
 <script type="module" src="app/app.js"></script>
 </body>
 </html>

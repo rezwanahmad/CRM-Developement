@@ -5,7 +5,7 @@
   "description": "Static HTML/ESM CRM for study-abroad & education-visa consultancies. No build step, no framework, deploys to any shared host.",
   "scripts": {
     "seed": "node scripts/build-seed.mjs",
-    "test": "node scripts/build-seed.mjs && node test/harness.mjs",
+    "test": "node scripts/build-seed.mjs && node test/harness.mjs && node test/case-auth-off.mjs",
     "serve": "python3 -m http.server 8080 --bind 0.0.0.0",
     "start": "node scripts/build-seed.mjs && node scripts/serve.mjs"
   },

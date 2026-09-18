@@ -2,8 +2,9 @@
 // Views the config generator can't cover: dashboard, document board, reports,
 // templates, settings/sync.
 // ============================================================================
-import { COUNTRIES, CURRENCIES, ENTITIES, STAGES } from "./config.js";
+import { AUTH_ENABLED, COUNTRIES, CURRENCIES, ENTITIES, STAGES } from "./config.js";
 import { all, apiEnabled, auth, exportJSON, get, importJSON, put, raw, resetDemo, save, syncFlush, syncPending, syncPull, title, today, wipe } from "./store.js";
+import { setAuthEnabled } from "./config.js";
 import { ageDays, alerts, docProgress, generateChecklist, stageColor, stageName, toPKR } from "./automation.js";
 import { avatar, chip, confirmBox, esc, fmtDate, modal, recordForm, table, toast, input, readForm } from "./ui.js";
 import { DOC_DONE } from "./seed.js";
@@ -297,6 +298,16 @@ export const ADMIN = {
             <button class="btn sm ghost" id="demoreset">↺ Reset demo data</button>
             <button class="btn sm danger ghost" id="wipeall">🗑 Wipe everything</button>
           </div></section>
+        <section class="card"><h4>Authentication</h4>
+          <p class="small" style="margin:0 0 8px">${AUTH_ENABLED
+            ? '<span class="chip" style="--cc:#10b981">login required</span> The sign-in screen is active' + (apiEnabled() ? " and checked by <code>api/index.php</code> (bcrypt + session)." : ", checked against local demo credentials.")
+            : '<span class="chip" style="--cc:#f59e0b">login disabled</span> Development mode — the app opens with full admin rights and no sign-in.'}</p>
+          <label class="sw" style="margin-bottom:8px"><input type="checkbox" id="authsw" ${AUTH_ENABLED ? "checked" : ""}/><span>Require login (auth)</span></label>
+          ${AUTH_ENABLED ? `<div class="formgrid" style="max-width:420px">${input("user", "username", auth.user()?.username || "admin")}${input("user", "pass", "")}</div>
+            <button class="btn sm primary" id="dopass">Set this account's password</button>` : ""}
+          ${AUTH_ENABLED ? `<div style="display:flex;gap:8px;margin-top:8px"><button class="btn sm" id="dosignout">Sign out</button></div>` : ""}
+          ${AUTH_ENABLED ? "" : `<div class="warnbox">Before go-live: set <code>window.EDUFLOW = { api: "api/index.php", auth: true }</code> in <code>index.html</code>. Without a login, <b>anyone who knows the URL can read and edit every student record</b>, and PHP-side role scoping never runs. A hosted CRM with auth off is a public CRM.</div>`}
+        </section>
         <section class="card"><h4>Sync</h4>
           <p class="small muted">Queue depth: <b>${syncPending()}</b> pending write(s).</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" id="push">⇈ Push now</button><button class="btn sm" id="pullnow">⇊ Pull changes</button></div></section>
@@ -318,6 +329,19 @@ export const ADMIN = {
     root.querySelector("#push")?.addEventListener("click", async () => toast((await syncFlush()).ok ? "Pushed to server" : "No server configured / offline"));
     root.querySelector("#pullnow")?.addEventListener("click", async () => toast((await syncPull(0)) ? "Pulled server changes" : "No server configured / offline"));
     root.querySelector("#ratesave")?.addEventListener("click", () => { root.querySelectorAll("[data-cur]").forEach((i) => { CURRENCIES[i.dataset.cur].rate = Number(i.value) || 1; }); localStorage.setItem("eduflow.rates", JSON.stringify(Object.fromEntries(Object.entries(CURRENCIES).map(([k, v]) => [k, v.rate])))); toast("Rates saved"); });
+    root.querySelector("#authsw")?.addEventListener("change", (e) => {
+      setAuthEnabled(e.target.checked);
+      toast(e.target.checked ? "Login required — reload to see the sign-in screen" : "Login disabled — reload to drop the wall");
+      setTimeout(() => location.reload(), 700);
+    });
+    root.querySelector("#dosignout")?.addEventListener("click", async () => { await auth.logout(); location.reload(); });
+    root.querySelector("#dopass")?.addEventListener("click", () => {
+      const u = auth.user(); if (!u) return toast("Sign in first");
+      const pass = root.querySelector("#f_pass")?.value || "";
+      if (apiEnabled()) return toast("Set passwords in the server DB (bcrypt) — api/install.php or phpMyAdmin");
+      if (pass.length < 6) return toast("Password too short (min 6)");
+      put("user", { ...u, pass }); toast("Password saved to this device's store");
+    });
     root.querySelector("#unew")?.addEventListener("click", () => recordForm("user", {}, after));
     root.querySelectorAll("[data-uedit]").forEach((b) => b.onclick = () => recordForm("user", get("user", b.dataset.uedit), after));
   },

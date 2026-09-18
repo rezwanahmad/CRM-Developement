@@ -20,6 +20,34 @@ export const CURRENCIES = {
   USD: { symbol: "$", rate: 278 },
 };
 
+// ---------------------------------------------------------------------------
+// AUTHENTICATION SWITCH.
+// Development: keep `false` — no login wall, the app opens straight in and
+// everything is visible as a full admin.
+// Go-live:     flip to `true` (or delete window.EDUFLOW.auth from index.html,
+//              since the default is protected) and enable api/index.php, so
+//              credentials are checked by PHP/bcrypt instead of this browser.
+// Temporary override while testing: add ?auth=1 (or ?auth=0) to the URL.
+// ---------------------------------------------------------------------------
+export const AUTH_ENABLED = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get("auth");
+    if (q !== null) return q !== "0";                       // ?auth=1 / ?auth=0
+    const saved = localStorage.getItem("eduflow.auth");
+    if (saved !== null) return saved === "1";               // set from Settings
+  } catch (e) { /* non-browser context */ }
+  const flag = (typeof window !== "undefined" && window.EDUFLOW) ? window.EDUFLOW.auth : undefined;
+  return flag !== false;                                    // default: protected
+})();
+
+/** Identity used when authentication is off. Admin so no screen is hidden mid-build. */
+export const DEV_USER = { id: "u-001", username: "dev", name: "Developer", role: "Admin", branch: "Dev", email: "", phone: "", active: true };
+
+/** Flip the switch from inside the app (Settings → Authentication). */
+export function setAuthEnabled(on) {
+  try { localStorage.setItem("eduflow.auth", on ? "1" : "0"); } catch (e) {}
+}
+
 export const ROLES = {
   admin:     { label: "Admin",      all: true },
   manager:   { label: "Manager",    all: true, no_delete: false },

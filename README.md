@@ -20,8 +20,13 @@ config file.
 
 ```bash
 npm start            # builds data/seed.json, then serves on 0.0.0.0:8080
-# → open http://localhost:8080  ·  login admin / admin123
+# → open http://localhost:8080 — no login, it opens straight into the dashboard
 ```
+
+**There is no login during development** (`window.EDUFLOW.auth = false` in
+`index.html`). The sign-in screen, session handling and role scoping are all
+still implemented and switched off from one place, so re-enabling at go-live is
+a one-line change — see [Going live](#going-live-checklist).
 
 No Node on the machine? `python3 -m http.server 8080` works the same.
 Opening `index.html` straight from disk does **not** — browsers block ES modules
@@ -56,7 +61,29 @@ the same `api/` layer — see [Roadmap](#roadmap).
 
 ---
 
-## If login fails
+## Going live checklist
+
+Auth is deliberately off while you build. Before real student data touches a
+public host:
+
+1. `api/config.php` → MySQL credentials; run `api/install.php`; **delete it**.
+2. `index.html` → `window.EDUFLOW = { api: "api/index.php", auth: true }`.
+   (Or flip it from `#/admin → Authentication`, which only affects that browser —
+   the file is the deploy-time source of truth.)
+3. HTTPS via cPanel AutoSSL. Without TLS the password crosses the wire in clear.
+4. `php -l api/*.php`, then one end-to-end login + one write + a second browser
+   signed in as `Counselor` (confirms ownership scoping actually hides rows).
+5. Set each team member's own password; retire the demo `admin123`.
+
+If `auth: true` and the API is *not* configured, the app falls back to local
+demo credentials — useful for testing the wall, never for production.
+
+### If a login ever fails anyway
+
+Demo passwords are `username + "123"`. If *no* password works, the local browser
+store was empty or from another build — in v1.0 this was a bug (an empty cache
+blob was accepted as a valid database, so the team table stayed empty forever).
+It self-heals now:
 
 The demo passwords are `username + "123"` (`admin123`, `sana123`, …). If *no*
 password works, the local browser store was empty or from another build — which
@@ -202,6 +229,10 @@ shape the import expects.
 ---
 
 ## Security — read this, it's short
+
+- **`auth: false` means the whole CRM is unauthenticated.** Anyone who can reach
+  the URL can read every passport number and edit every record, and PHP-side role
+  scoping never runs. It is a development convenience only.
 
 - **Local mode is not secure storage.** Passwords sit in `localStorage` in clear
   text so the demo can run offline. Anyone with the device or a DOM dump reads
